@@ -1,7 +1,7 @@
-name: Sync templates from openaustralia/.github
+name: Sync community health files from openaustralia/.github
 
-# Mirrors the issue and pull request templates from openaustralia/.github into
-# this repo, opening a PR when upstream has changed. CONTRIBUTING.md is
+# Mirrors the issue/PR templates and FUNDING.yml from openaustralia/.github
+# into this repo, opening a PR when upstream has changed. CONTRIBUTING.md is
 # intentionally excluded and maintained locally -- see CONTRIBUTING.md.
 #
 # Uses actions/checkout and the gh CLI only (no third-party actions): this
@@ -36,7 +36,7 @@ jobs:
           repository: openaustralia/.github
           path: upstream
 
-      - name: Mirror templates and open a pull request if they changed
+      - name: Mirror files and open a pull request if they changed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -48,27 +48,30 @@ jobs:
           mkdir -p .github/ISSUE_TEMPLATE
           cp upstream/.github/ISSUE_TEMPLATE/*.md .github/ISSUE_TEMPLATE/
           cp upstream/.github/PULL_REQUEST_TEMPLATE.md .github/PULL_REQUEST_TEMPLATE.md
+          cp upstream/.github/FUNDING.yml .github/FUNDING.yml
           rm -rf upstream
 
-          if git diff --quiet -- .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md; then
-            echo "Templates unchanged, nothing to do."
+          SYNCED_PATHS=".github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md .github/FUNDING.yml"
+
+          if git diff --quiet -- $SYNCED_PATHS; then
+            echo "Community health files unchanged, nothing to do."
             exit 0
           fi
 
-          BRANCH="sync/github-templates"
+          BRANCH="sync/github-community-files"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
-          git add .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md
-          git commit -s -m "Sync issue/PR templates from openaustralia/.github@${UPSTREAM_SHA}"
+          git add $SYNCED_PATHS
+          git commit -s -m "Sync community health files from openaustralia/.github@${UPSTREAM_SHA}"
           git push --force origin "$BRANCH"
 
           if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             echo "Pull request already open for $BRANCH."
           else
             gh pr create \
-              --title "Sync issue/PR templates from openaustralia/.github" \
-              --body "Automated sync of \`PULL_REQUEST_TEMPLATE.md\` and \`ISSUE_TEMPLATE/*.md\` from https://github.com/openaustralia/.github@${UPSTREAM_SHA}. Review the diff and merge if it's right for this org." \
+              --title "Sync community health files from openaustralia/.github" \
+              --body "Automated sync of \`PULL_REQUEST_TEMPLATE.md\`, \`ISSUE_TEMPLATE/*.md\`, and \`FUNDING.yml\` from https://github.com/openaustralia/.github@${UPSTREAM_SHA}. Review the diff and merge if it's right for this org." \
               --head "$BRANCH" \
               --base main
           fi
