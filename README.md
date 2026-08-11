@@ -14,6 +14,12 @@ ones here.
 
 ## One-time setup
 
-For the sync workflow to open pull requests, an org owner needs to enable
-**Allow GitHub Actions to create and approve pull requests** under this
-repo's Settings -> Actions -> General -> Workflow permissions.
+The sync workflow needs Actions to be able to create pull requests. This is
+an org-wide setting (`planningalerts-scrapers` disables it by default, and it
+can't be overridden per repo) -- enabled 2026-08-11 under Organization
+settings -> Actions -> General -> Workflow permissions -> "Allow GitHub
+Actions to create and approve pull requests".
+
+The workflow itself uses only `actions/checkout` and the `gh` CLI, not any
+third-party action, because this org's Actions policy allows only
+GitHub-owned/verified actions.

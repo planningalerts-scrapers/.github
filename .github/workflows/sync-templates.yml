@@ -4,13 +4,13 @@ name: Sync templates from openaustralia/.github
 # this repo, opening a PR when upstream has changed. CONTRIBUTING.md is
 # intentionally excluded and maintained locally -- see CONTRIBUTING.md.
 #
-# One-time setup: enable "Allow GitHub Actions to create and approve pull
-# requests" under Settings > Actions > General > Workflow permissions, or the
-# create-pull-request step below will fail with a 403.
+# Uses actions/checkout and the gh CLI only (no third-party actions): this
+# org's Actions policy allows only GitHub-owned/verified actions, and the gh
+# CLI is a preinstalled runner tool rather than a marketplace action, so it
+# isn't subject to that allowlist.
 #
-# Note: the only dynamic value used below (UPSTREAM_SHA) is a git commit SHA
-# read via `git rev-parse`, passed through GITHUB_ENV rather than interpolated
-# into a run: command -- it is not attacker-controlled free text.
+# The only dynamic value used below (UPSTREAM_SHA) is a git commit SHA read
+# via `git rev-parse` -- not attacker-controlled free text.
 
 on:
   schedule:
@@ -36,40 +36,39 @@ jobs:
           repository: openaustralia/.github
           path: upstream
 
-      - name: Mirror templates
+      - name: Mirror templates and open a pull request if they changed
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          UPSTREAM_SHA="$(git -C upstream rev-parse --short HEAD)"
+
           rm -rf .github/ISSUE_TEMPLATE
           mkdir -p .github/ISSUE_TEMPLATE
           cp upstream/.github/ISSUE_TEMPLATE/*.md .github/ISSUE_TEMPLATE/
           cp upstream/.github/PULL_REQUEST_TEMPLATE.md .github/PULL_REQUEST_TEMPLATE.md
+          rm -rf upstream
 
-      - name: Record upstream commit SHA
-        run: echo "UPSTREAM_SHA=$(git -C upstream rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          if git diff --quiet -- .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md; then
+            echo "Templates unchanged, nothing to do."
+            exit 0
+          fi
 
-      - name: Remove upstream checkout
-        run: rm -rf upstream
+          BRANCH="sync/github-templates"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add .github/ISSUE_TEMPLATE .github/PULL_REQUEST_TEMPLATE.md
+          git commit -s -m "Sync issue/PR templates from openaustralia/.github@${UPSTREAM_SHA}"
+          git push --force origin "$BRANCH"
 
-      - name: Open pull request
-        uses: peter-evans/create-pull-request@v6
-        env:
-          UPSTREAM_SHA: ${{ env.UPSTREAM_SHA }}
-        with:
-          add-paths: |
-            .github/ISSUE_TEMPLATE
-            .github/PULL_REQUEST_TEMPLATE.md
-          commit-message: |
-            Sync issue/PR templates from openaustralia/.github@${{ env.UPSTREAM_SHA }}
-
-            Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          branch: sync/github-templates
-          delete-branch: true
-          title: "Sync issue/PR templates from openaustralia/.github"
-          body: |
-            Automated sync of `PULL_REQUEST_TEMPLATE.md` and `ISSUE_TEMPLATE/*.md`
-            from [openaustralia/.github](https://github.com/openaustralia/.github)@${{ env.UPSTREAM_SHA }}.
-
-            Review the diff and merge if it's right for this org.
-          labels: automated
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            echo "Pull request already open for $BRANCH."
+          else
+            gh pr create \
+              --title "Sync issue/PR templates from openaustralia/.github" \
+              --body "Automated sync of \`PULL_REQUEST_TEMPLATE.md\` and \`ISSUE_TEMPLATE/*.md\` from https://github.com/openaustralia/.github@${UPSTREAM_SHA}. Review the diff and merge if it's right for this org." \
+              --head "$BRANCH" \
+              --base main
+          fi
